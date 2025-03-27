@@ -1,0 +1,3 @@
+C:/Users/annam/OneDrive/Dokumenty/studia/5 rok/magisterka/implementacja/cmake-build-debug/CMakeFiles/implementacja.dir
+C:/Users/annam/OneDrive/Dokumenty/studia/5 rok/magisterka/implementacja/cmake-build-debug/CMakeFiles/edit_cache.dir
+C:/Users/annam/OneDrive/Dokumenty/studia/5 rok/magisterka/implementacja/cmake-build-debug/CMakeFiles/rebuild_cache.dir

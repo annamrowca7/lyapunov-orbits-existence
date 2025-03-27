@@ -1,0 +1,1 @@
+/usr/bin/g++ -g CMakeFiles/master_algorithm.dir/main.cpp.o -o master_algorithm  /home/agnieszka/CAPD/build/libcapd.a /home/agnieszka/CAPD/build/capdExt/filibsrc/libfilib.a 
