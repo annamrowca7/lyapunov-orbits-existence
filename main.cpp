@@ -1,33 +1,40 @@
 #include <iostream>
 #include "capd/capdlib.h"
 #include "capd/map/Map.hpp"
+#include "capd/dynsys/OdeSolver.hpp"
+#include "capd/poincare/PoincareMap.hpp"
+#include "capd/poincare/AbstractSection.hpp"
+#include "capd/dynset/C0DoubletonSet.hpp"
+#include "capd/dynset/C1DoubletonSet.hpp"
 
 using namespace capd;
 using capd::autodiff::Node;
 using namespace std;
 
-void pcr3bpVectorField(Node /*t*/, Node in[], int /*dimIn*/, Node out[], int /*dimOut*/, Node params[], int /*noParams*/) {
+void cr3bpVectorField(Node /*t*/, Node in[], int /*dimIn*/, Node out[], int /*dimOut*/, Node params[], int /*noParams*/) {
     // Try to factorize expression as much as possible.
     // Usually we have to define some intermediate quantities.
-    Node mj = 1 - params[0]; // relative mass of the Sun
+    Node mj = params[0] - 1; // relative mass of the Sun
     Node xMu = in[0] + params[0];
-    Node xMj = in[0] - mj;
+    Node xMj = in[0] + mj;
     Node xMuSquare = xMu ^ 2; // square
     Node xMjSquare = xMj ^ 2;
     Node ySquare = in[1] ^ 2;
     Node zSquare = in[2] ^ 2;
+    Node yzSquare = ySquare + zSquare;
 
     // power -1.5, for rigorous computation use ONLY REPRESENTABLE CONSTANTS.
     // If exponent is not representable or it is an interval then it should be a parameter of the map.
-    Node factor1 = mj * ((xMuSquare + ySquare + zSquare) ^ -1.5);
-    Node factor2 = params[0] * ((xMjSquare + ySquare + zSquare) ^ -1.5);
+    Node factor1 = mj * ((xMuSquare + yzSquare) ^ -1.5);
+    Node factor2 = params[0] * ((xMjSquare + yzSquare) ^ -1.5);
+    Node factor = factor1 - factor2;
     out[0] = in[3];
     out[1] = in[4];
     out[2] = in[5];
 
-    out[3] = in[0] - xMu * factor1 - xMj * factor2 + 2 * in[4];
-    out[4] = in[1] * (1 - factor1 - factor2) - 2 * in[3];
-    out[5] = -in[2] * mj * factor1 - in[2] * params[0] * factor2;
+    out[3] = in[0] + xMu * factor1 - xMj * factor2 + 2 * in[4];
+    out[4] = in[1] * (1 + factor) - 2 * in[3];
+    out[5] = in[2] * factor;
 }
 
 void g_(Node /*t*/, Node in[], int /*dimIn*/, Node out[], int /*dimOut*/, Node params[], int /*noParams*/) {
@@ -101,7 +108,7 @@ void newtonIntervalExample() {
 
 }
 
-int main() {
+void proofOfExistenceOfZeroCurveForInterval() {
     std::cout.precision(17);
     cout << 1 + interval(-1, 1) * 0.001 << '\n';
     //newtonIntervalExample();
@@ -138,5 +145,83 @@ int main() {
         }
     }
     cout << "subinterval: " << subintervalLength << "steps: " << counter;
+}
+
+LDVector findApproxOrbit(LDVector v, LDPoincareMap &pm){
+    for (int i = 0; i < 15; ++i) {
+        LDMatrix D(6, 6);
+        LDVector y = pm(v, D);
+        D = pm.computeDP(y, D);
+
+        // we want y=0 and dx=0
+        LDVector u({y[1], y[3]});
+        // input variables are x,dy (0 and 4)
+        LDMatrix M({{D[1][0], D[1][4]},
+                    {D[3][0], D[3][4]}});
+        u = matrixAlgorithms::gauss(M, u);
+        v[0] -= u[0];
+        v[4] -= u[1];
+    }
+    return v;
+}
+
+bool intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta) {
+    IVector X = x0 + delta; //sparametryzaować 0.01
+//    cout << "X:\n" << X << '\n';
+    IMatrix D(6, 6);
+    C0Rect2Set s0(x0); //0 oznacza, że liczymy tylko przecięcie z sekcją
+    IVector y0 = pm(s0);
+
+    C1Rect2Set s(X); //tu liczymy też pochodne odwzorowania poincarego
+    IVector y = pm(s,D);
+    D = pm.computeDP(y, D);
+
+    IVector u({y0[1], y0[3]});
+    // input variables are x,dy (0 and 4)
+    IMatrix M({{D[1][0], D[1][4]},
+                {D[3][0], D[3][4]}});
+
+    IVector inverseVector = -matrixAlgorithms::gauss(M, u);
+    IVector N = IVector{x0[0], x0[4]} + inverseVector;
+//    cout << "Inverse vector: \n" << inverseVector << '\n';
+//    cout << "N:\n" << N << '\n';
+    if (subset(N[0], X[0]) && subset(N[1], X[4])) {
+//        delta = 1.5 * interval(-1, 1) * inverseVector;
+        std::cout << "Ok :)\n";
+        return true;
+    } else {
+        std::cout << "nie :(\n" << "\n";
+        return false;
+    }
+}
+
+void proofOfExistenceOfOneVerticalLyapunovOrbit() {
+    cout.precision(17);
+    int dim = 6, noParam = 1;
+    LDMap vf(cr3bpVectorField, dim, dim, noParam);
+    // set value of parameters mu, which is relative mass of Jupiter
+    // 0 is index of parameter, 0.0009537 is its new value
+    long double mu = 0.0009537;
+    vf.setParameter(0, mu);
+
+    // define solver, section and Poincare map
+    LDOdeSolver solver(vf, 8);
+    LDCoordinateSection section(6, 2); // nowa sekcja Poincarego: z = 0
+    LDPoincareMap pm(solver, section);
+
+    LDVector L1{0.98441021177268586,0, 0.121, 0, -0.039710378195527894, 0};
+    LDVector v = findApproxOrbit(L1, pm);
+
+    IMap ivf(cr3bpVectorField, dim, dim, noParam);
+    ivf.setParameter(0, mu);
+    IOdeSolver isolver(ivf, 10);
+    ICoordinateSection isection(6, 2); // nowa sekcja Poincarego: z = 0
+    IPoincareMap ipm(isolver, isection);
+    IVector delta = IVector{1,0,0,0,1,0} * interval(-1,1) * 1e-5;
+    intervalNewton(vectalg::convertObject<IVector>(v), ipm, delta);
+}
+int main() {
+    proofOfExistenceOfOneVerticalLyapunovOrbit();
+    //kontynuacja po parametrze z
     return 0;
 }

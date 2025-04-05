@@ -22,6 +22,6 @@ link_directories(
 )
 find_package(CAPD REQUIRED PATHS /home/amrowca/CAPD/build)
 add_executable(implementacja main.cpp)
-target_link_libraries(implementacja /home/amrowca/CAPD/build/libcapd.a)
+target_link_libraries(implementacja /home/amrowca/CAPD/build/libcapd.a /home/amrowca/CAPD/build/capdExt/filibsrc/libfilib.a)
 
 
