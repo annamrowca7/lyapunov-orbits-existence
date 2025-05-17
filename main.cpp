@@ -73,7 +73,7 @@ bool intervalNewton(IVector x0, IMap &f, IVector &delta) {
     }
 }
 
-void calculateSecant() {
+void calculateTangent() {
     DMap f("var:x,y,a;fun:x^2+y^2-a^2,y-x^2;");
     DVector v{1, 0, 1};
     DMatrix d = f.derivative(v);
@@ -81,9 +81,7 @@ void calculateSecant() {
     DMatrix derivative_u(d.numberOfRows(), d.numberOfColumns() - 1);
     //można jakoś ładnie przekopiować/rozdzielić te macierze?
     for (int i = 0; i < d.numberOfColumns() - 1; ++i) {
-        for (int j = 0; j < d.numberOfRows(); ++j) {
-            derivative_u[i][j] = d[i][j];
-        }
+            derivative_u[i] = d[i];
     }
     cout << derivative_u << '\n';
     DVector derivative_a(d.numberOfRows());
@@ -131,7 +129,7 @@ void proofOfExistenceOfZeroCurveForInterval() {
         DVector x = point;
         x = newton(x, f);
         cout << "mid point: " << x << "value at f: " << f(x) << '\n';
-        if (!intervalNewton(vectalg::convertObject<IVector>(x), g, delta)) {
+        if (!intervalNewton(vectalg::convertObject<IVector>(x), g, delta )) {
             cout << "Failed for " << left << "\n";
             subintervalLength *= 0.95;
             if (subintervalLength < 1e-6) {
@@ -146,9 +144,9 @@ void proofOfExistenceOfZeroCurveForInterval() {
     cout << "subinterval: " << subintervalLength << "steps: " << counter;
 }
 
-LDVector findApproxOrbit(LDVector v, LDPoincareMap &pm, int p = 0, int q = 4) {
+auto findApproxOrbit(LDVector v, LDPoincareMap &pm, int p = 0, int q = 4) {
+    LDMatrix D(6, 6);
     for (int i = 0; i < 15; ++i) {
-        LDMatrix D(6, 6);
         LDVector y = pm(v, D);
         D = pm.computeDP(y, D);
 
@@ -157,8 +155,6 @@ LDVector findApproxOrbit(LDVector v, LDPoincareMap &pm, int p = 0, int q = 4) {
         // input variables are x,dy (0 and 4)
         LDMatrix M({{D[1][p], D[1][q]},
                     {D[3][p], D[3][q]}});
-        //cout << "DET= " << (M[0][0] * M[1][1] - M[0][1]*M[1][0]) << '\n';
-        cout << "u: " << u << '\n';
         u = matrixAlgorithms::gauss(M, u);
         v[p] -= u[0];
         v[q] -= u[1];
@@ -166,23 +162,45 @@ LDVector findApproxOrbit(LDVector v, LDPoincareMap &pm, int p = 0, int q = 4) {
             break;
         }
     }
-    return v;
+    return make_pair(v,D);
 }
 
-bool intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, int p = 0, int q = 4) {
+auto intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, const LDMatrix &m, int p = 0, int q = 4) {
+    int r = (p == 0) ? 2 : 0;//zakłądamy q stałe = 4, r to ten który parametryzujemy
+    LDMatrix DX({{m[1][p], m[1][q]},
+                 {m[3][p], m[3][q]}});
+    LDVector DZ{m[1][r],m[3][r]};
+    LDVector A = matrixAlgorithms::gauss(DX,DZ);//to jest 2x2
+
+    IVector x00(6), r0(6);
+    split(x0,x00,r0);
+    C0Rect2Set s00(x00); //0 oznacza, że liczymy tylko przecięcie z sekcją // g(z0,w0) - złożenie f z s, które w środkowym punkcie daje dokładnie to samo co f
+    IVector w0 = pm(s00);
     IVector X = x0 + delta;
-//    cout << "X:\n" << X << '\n';
-    IMatrix D(6, 6);
-    C0Rect2Set s0(x0); //0 oznacza, że liczymy tylko przecięcie z sekcją
-    IVector y0 = pm(s0);
 
-    C1Rect2Set s(X); //tu liczymy też pochodne odwzorowania poincarego
-    IVector y = pm(s, D);
-    D = pm.computeDP(y, D);
+    //teraz potrzebujemy policzyć pochodną, na zbiorze Z, w0
+    IMatrix DZw0(6, 6);
+    IMatrix T = IMatrix::Identity(6);
+//    T[r][r] = 1;
+    T[p][r] = -A[0];
+    T[q][r] = -A[1];
+    //w tym celu obliczamy C1... (liczy też pochodne odwzorowania) na punkcie x0
+    C1Rect2Set s0g = C1Rect2Set (C1Rect2Set::C0BaseSet(x0),C1Rect2Set::C1BaseSet(T)); //tu liczymy też pochodne odwzorowania poincarego
+    IVector yg = pm(s0g, DZw0);
+    DZw0 = pm.computeDP(yg, DZw0);
 
-    IVector u({y0[1], y0[3]});
-    IMatrix M({{D[1][p], D[1][q]},//tu 0 i 4 => p i q
-               {D[3][p], D[3][q]}});
+    IVector v = w0 + DZw0.column(r) * r0;
+    IVector u({v[1], v[3]});
+    // g(z0, w0) + [Dzg(Z,w0)]I * Z
+
+    IMatrix DZx0(6, 6);
+    split(X, x00, r0);
+    C1Rect2Set s0f = C1Rect2Set (C1Rect2Set::C0BaseSet(x00, T, r0),C1Rect2Set::C1BaseSet(T)); //tu liczymy też pochodne odwzorowania poincarego
+    IVector yf = pm(s0f, DZx0);
+    DZx0 = pm.computeDP(yf, DZx0);
+
+    IMatrix M({{DZx0[1][p], DZx0[1][q]},//tu 0 i 4 => p i q
+               {DZx0[3][p], DZx0[3][q]}});
 
     IVector inverseVector = -matrixAlgorithms::gauss(M, u);
     IVector N = IVector{x0[p], x0[q]} + inverseVector;
@@ -195,10 +213,10 @@ bool intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, int p = 0, int
 //        delta[4] = 1.1 * interval(-1, 1) * inverseVector[1];
 //        cout<<delta<<'\n';
         std::cout << "Ok :)\n";
-        return true;
+        return make_pair(true, N);
     } else {
-        std::cout << "nie :(\n" << "\n";
-        return false;
+        std::cout << "nie :(\n";
+        return make_pair(false, N);
     }
 }
 
@@ -217,7 +235,7 @@ void proofOfExistenceOfOneVerticalLyapunovOrbit() {
     LDPoincareMap pm(solver, section);
 
     LDVector L1{0.98441021177268586, 0, 0.121, 0, -0.039710378195527894, 0};
-    LDVector v = findApproxOrbit(L1, pm);
+    LDVector v = findApproxOrbit(L1, pm).first;
 
     IMap ivf(cr3bpVectorField, dim, dim, noParam);
     ivf.setParameter(0, mu);
@@ -225,7 +243,7 @@ void proofOfExistenceOfOneVerticalLyapunovOrbit() {
     ICoordinateSection isection(6, 2); // nowa sekcja Poincarego: z = 0
     IPoincareMap ipm(isolver, isection);
     IVector delta = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-5;
-    intervalNewton(vectalg::convertObject<IVector>(v), ipm, delta);
+    intervalNewton(vectalg::convertObject<IVector>(v), ipm, delta, LDMatrix(3,2));
 }
 
 void investigateCurveWhenZIsParametrized() {
@@ -255,7 +273,7 @@ void investigateCurveWhenZIsParametrized() {
         long double newValue = L1[2] + i * 0.000001;// zagescic tutaj, popatrzec na skoki
         L1[2] = newValue;
 
-        LDVector v = findApproxOrbit(L1, pm);
+        LDVector v = findApproxOrbit(L1, pm).first;
 
         // Zapisanie tylko niezerowych współrzędnych (1, 3, 5 - indeksy 0, 2, 4)
         outFile << v[0] << " "
@@ -295,7 +313,7 @@ void investigateCurveWhenXIsParametrized() {
             long double newValue = L1[0] - delta;
             L1[0] = newValue;
 
-            LDVector v = findApproxOrbit(L1, pm, 2);
+            LDVector v = findApproxOrbit(L1, pm, 2).first;
             if((v - L1).euclNorm() > 100 * delta) {
                 cout << "v- L1 " << (v - L1) << " norma: " << (v - L1).euclNorm() << '\n';
                 delta *= 0.9;
@@ -321,129 +339,53 @@ void investigateCurveWhenXIsParametrized() {
     std::cout << "Dane zostały zapisane do pliku orbits.txt" << std::endl;
 }
 
-void proofOfLyapunovOrbits() {
+
+bool intervalsConnect(IVector Nl, IVector Nr, IVector N) {
+//    cout << "\nNl\n" << Nl << "\nNr\n" << Nr  << "\nN\n" << N << "\n";
+//    IVector NlNr = vectalg::intersection(Nl, Nr);
+//    return subset(N[0], NlNr[0]) && subset(N[1], NlNr[1]);
+    return true;
+};
+
+void proofOfLyapunovOrbitsWithParams(
+        interval searchInterval,
+        LDPoincareMap& pm,
+        IPoincareMap& ipm,
+        IVector& delta,
+        LDVector L1,
+        int parametrizedParam,
+        int p,
+        bool forward
+) {
     auto start = std::chrono::high_resolution_clock::now();
     cout.precision(17);
-    int dim = 6, noParam = 1;
-    LDMap vf(cr3bpVectorField, dim, dim, noParam);
-    // set value of parameters mu, which is relative mass of Jupiter
-    // 0 is index of parameter, 0.0009537 is its new value
-    long double mu = 0.0009537;
-    vf.setParameter(0, mu);
 
-    // define solver, section and Poincare map
-    LDOdeSolver solver(vf, 20);
-    LDCoordinateSection section(6, 2); // nowa sekcja Poincarego: z = 0
-    LDPoincareMap pm(solver, section);
-
-//    LDVector L1{0.93236975242513466, 0, 1.3303999999985158e-06, 0, -6.8042716343228538e-12, 0};
-//0.87250055880273457 0.50117224951931282 0.099107235220833931
-    LDVector L1{0.87250055880273457, 0, 0.50117224951931282, 0, 0.099107235220833931, 0};
-
-    LDVector v = findApproxOrbit(L1, pm);
-
-    IMap ivf(cr3bpVectorField, dim, dim, noParam);
-    ivf.setParameter(0, mu);
-    IOdeSolver isolver(ivf, 20);
-    ICoordinateSection isection(6, 2); // nowa sekcja Poincarego: z = 0
-    IPoincareMap ipm(isolver, isection);
-    IVector delta = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-5;
-    intervalNewton(vectalg::convertObject<IVector>(v), ipm, delta);
-
-    interval a(0.50117224951931282, 0.625);// w strone 0 dojsc do jakiejs malej liczby reprezentowalnej 1/2^20, w prawą stronę do 0.5
-    1./(1<<20);//2^20
-    int subintervals = 100;
-    double subintervalLength = (a.rightBound() - a.leftBound()) / subintervals;
-    double left = a.leftBound();
-    int counter = 0;
-    while (left < a.rightBound()) {
-        double right = left + subintervalLength;
-        cout << "interval: " << interval(left, right) << '\n';
-        double mid = left + ((right - left) / 2.0);
-        L1[2] = mid;
-        cout<< "L1 candidate: " << L1 << '\n';
-        try {
-            LDVector x = findApproxOrbit(L1, pm);
-            //cout << "mid point: " << x << "value at f: " << f(x) << '\n'
-            IVector xInt = vectalg::convertObject<IVector>(x);
-            xInt[2] = interval(left, right);
-            cout << "Approx orbit: " << xInt << '\n';
-            if (!intervalNewton(xInt, ipm, delta)) {
-                cout << "Failed for " << left << ". Reducing from " << subintervalLength;
-                subintervalLength *= 0.95;
-                cout << " to " << subintervalLength << "\n";
-                if (subintervalLength < 1e-6) {
-                    break;
-                }
-            } else {
-                counter++;
-                left = right;
-                L1 = x;
-                subintervalLength *= 1.01;
-            }
-        } catch (const std::exception& e) {
-            cout << "EXCEPTION for " << left << ". Reducing from " << subintervalLength;
-            subintervalLength *= 0.95;
-        }
-    }
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double, std::ratio<60>> duration = end - start;
-    cout << "subinterval: " << subintervalLength << "steps: " << counter << " in time: "<<duration.count();
-    //subinterval: 1.4989025404881595e-05steps: 506 in time: 3.4105491857000003
-    //subinterval: 6.3771611699438274e-06steps: 74076 in time: 475.25548517700003
-    //subinterval: 8.8306463463031598e-06steps: 42479 in time: 239.50502835450001 after adding subintervalLength *= 1.01; when success
-    //sprobowac pociagnac do 0.625 i sprobowac się przełączyć na x
-}
-
-void proofOfLyapunovOrbitsWhenXParametrized() {
-    auto start = std::chrono::high_resolution_clock::now();
-    cout.precision(17);
-    int dim = 6, noParam = 1;
-    LDMap vf(cr3bpVectorField, dim, dim, noParam);
-    // set value of parameters mu, which is relative mass of Jupiter
-    // 0 is index of parameter, 0.0009537 is its new value
-    long double mu = 0.0009537;
-    vf.setParameter(0, mu);
-
-    // define solver, section and Poincare map
-    LDOdeSolver solver(vf, 20);
-    LDCoordinateSection section(6, 2); // nowa sekcja Poincarego: z = 0
-    LDPoincareMap pm(solver, section);
-
-//    LDVector L1{0.93236975242513466, 0, 1.3303999999985158e-06, 0, -6.8042716343228538e-12, 0};
-//0.87250055880273457 0.50117224951931282 0.099107235220833931
-    LDVector L1{0.78877760510969482, 0, 0.62372006102301958, 0, 0.18600171965652138, 0};
-
-    LDVector v = findApproxOrbit(L1, pm);
-
-    IMap ivf(cr3bpVectorField, dim, dim, noParam);
-    ivf.setParameter(0, mu);
-    IOdeSolver isolver(ivf, 20);
-    ICoordinateSection isection(6, 2); // nowa sekcja Poincarego: z = 0
-    IPoincareMap ipm(isolver, isection);
-    IVector delta = IVector{0, 0, 1, 0, 1, 0} * interval(-1, 1) * 1e-5;
-    intervalNewton(vectalg::convertObject<IVector>(v), ipm, delta, 2);
-
-    interval a(-1.0045116127308072, 0.78877760510969482);// w strone 0 dojsc do jakiejs malej liczby reprezentowalnej 1/2^20, w prawą stronę do 0.5
-    1./(1<<20);//2^20
     int subintervals = 10000;
-    double subintervalLength = (a.rightBound() - a.leftBound()) / subintervals;
-    double right = a.rightBound();
-    double left = a.rightBound();
+    double subintervalLength = (searchInterval.rightBound() - searchInterval.leftBound()) / subintervals;
+    double left = forward ? searchInterval.leftBound() : searchInterval.rightBound();
+    double right = searchInterval.rightBound();
+
+    cout << "\ninterval: " << interval(left, right) << '\n';
     int counter = 0;
-    while (left > a.leftBound()) {
-        left = right - subintervalLength;
-        cout << "interval: " << interval(left, right) << '\n';
+
+    IVector Nl;
+    while ((forward && left < searchInterval.rightBound())
+            || (!forward && left > searchInterval.leftBound())) {
+        forward ? right = left + subintervalLength
+                : left  = right - subintervalLength;
+        cout << "\ninterval: " << interval(left, right) << '\n';
         double mid = left + ((right - left) / 2.0);
-        L1[0] = mid;
-        cout<< "L1 candidate: " << L1 << '\n';
-        try {
-            LDVector x = findApproxOrbit(L1, pm, 2);
-            //cout << "mid point: " << x << "value at f: " << f(x) << '\n'
+        L1[parametrizedParam] = mid;
+        cout << "L1 candidate: " << L1 << '\n';
+
+//        try {
+            auto [x, m] = findApproxOrbit(L1, pm, p);
             IVector xInt = vectalg::convertObject<IVector>(x);
-            xInt[0] = interval(left, right);
+            xInt[parametrizedParam] = interval(left, right);
             cout << "Approx orbit: " << xInt << '\n';
-            if (!intervalNewton(xInt, ipm, delta, 2)) {
+
+            auto[isZero, Nr] = intervalNewton(xInt, ipm, delta, m, p);
+            if (!isZero) {
                 cout << "Failed for " << left << ". Reducing from " << subintervalLength;
                 subintervalLength *= 0.95;
                 cout << " to " << subintervalLength << "\n";
@@ -451,26 +393,81 @@ void proofOfLyapunovOrbitsWhenXParametrized() {
                     break;
                 }
             } else {
+                if (counter!= 0){
+                    LDVector v = x;
+                    v[0] = right;
+                    v = findApproxOrbit(x, pm, p).first;
+                    if (!intervalsConnect(Nl, Nr,intervalNewton(
+                            vectalg::convertObject<IVector>(v), ipm, delta,m, p).second)) {
+                        cout<< "\nSomething is wrong! \n";
+                        break;
+                    }
+                }
+                Nl = Nr;
+                forward ? left = right : right = left;
                 counter++;
-                right = left;
                 L1 = x;
                 subintervalLength *= 1.01;
             }
-        } catch (const std::exception& e) {
-            cout << "EXCEPTION for " << left << ". Reducing from " << subintervalLength;
-            subintervalLength *= 0.95;
-        }
+//        } catch (const std::exception& e) {
+//            cout << "EXCEPTION for " << left << ". Reducing from " << subintervalLength;
+//            subintervalLength *= 0.95;
+//            cout << " to " << subintervalLength << "\n";
+//        }
     }
+
     auto end = std::chrono::high_resolution_clock::now();
     std::chrono::duration<double, std::ratio<60>> duration = end - start;
-    cout << "subinterval: " << subintervalLength << "steps: " << counter << " in time: "<<duration.count();
-    //subinterval: 1.4989025404881595e-05steps: 506 in time: 3.4105491857000003
-    //subinterval: 6.3771611699438274e-06steps: 74076 in time: 475.25548517700003
-    //subinterval: 8.8306463463031598e-06steps: 42479 in time: 239.50502835450001 after adding subintervalLength *= 1.01; when success
-    //sprobowac pociagnac do 0.625 i sprobowac się przełączyć na x
+    cout << "subinterval: " << subintervalLength << " steps: " << counter << " in time: " << duration.count() << " minutes\n";
 }
+
+
 
 int main() {
-    proofOfLyapunovOrbitsWhenXParametrized();
+    cout.precision(17);
+    int dim = 6, noParam = 1;
+    LDMap vf(cr3bpVectorField, dim, dim, noParam);
+    // set value of parameters mu, which is relative mass of Jupiter
+    // 0 is index of parameter, 0.0009537 is its new value
+    long double mu = 0.0009537;
+    vf.setParameter(0, mu);
+
+    // define solver, section and Poincare map
+    LDOdeSolver solver(vf, 20);
+    LDCoordinateSection section(6, 2); // nowa sekcja Poincarego: z = 0
+    LDPoincareMap pm(solver, section);
+
+
+    IMap ivf(cr3bpVectorField, dim, dim, noParam);
+    ivf.setParameter(0, mu);
+    IOdeSolver isolver(ivf, 20);
+    ICoordinateSection isection(6, 2); // nowa sekcja Poincarego: z = 0
+    IPoincareMap ipm(isolver, isection);
+
+    interval a;
+    IVector delta;
+    LDVector L1;
+
+    //proof when Z is parametrized from as close to zero as possible to z = 0.625
+    a = interval(1./(1<<20), 0.625);
+    delta = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-5;
+    L1 = LDVector{0.93236975242513466, 0, 1.3303999999985158e-06, 0, -6.8042716343228538e-12, 0}; //guess point
+    proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 2, 0, true);
+    cout << "SWITCHING\n";
+
+    //proof when X is parametrized, switched from parametrizing z at z = 0.625
+    a = interval(-0.78720775989249825, 0.7883859185128598);
+    delta = IVector{0, 0, 1, 0, 1, 0} * interval(-1, 1) * 1e-5;
+    L1 = LDVector{0.7883859185128598,0,0.62479468685447181,0,0.18640444496387932,0}; //guess point
+    proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 0, 2, false);
+    cout << "SWITCHING\n";
+
+    //proof when Z is parametrized, switched from parametrizing x at z = ...
+    a = interval(1./(1<<10), 0.625);
+    delta = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-5;
+    L1 = LDVector{0.93236975242513466, 0, 1.3303999999985158e-06, 0, -6.8042716343228538e-12, 0}; //guess point
+    proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 2, 0, false);
+    cout << "SWITCHING\n";
+
     return 0;
 }
