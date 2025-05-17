@@ -378,7 +378,7 @@ void proofOfLyapunovOrbitsWithParams(
         L1[parametrizedParam] = mid;
         cout << "L1 candidate: " << L1 << '\n';
 
-//        try {
+        try {
             auto [x, m] = findApproxOrbit(L1, pm, p);
             IVector xInt = vectalg::convertObject<IVector>(x);
             xInt[parametrizedParam] = interval(left, right);
@@ -409,11 +409,11 @@ void proofOfLyapunovOrbitsWithParams(
                 L1 = x;
                 subintervalLength *= 1.01;
             }
-//        } catch (const std::exception& e) {
-//            cout << "EXCEPTION for " << left << ". Reducing from " << subintervalLength;
-//            subintervalLength *= 0.95;
-//            cout << " to " << subintervalLength << "\n";
-//        }
+        } catch (const std::exception& e) {
+            cout << "EXCEPTION for " << left << ". Reducing from " << subintervalLength;
+            subintervalLength *= 0.95;
+            cout << " to " << subintervalLength << "\n";
+        }
     }
 
     auto end = std::chrono::high_resolution_clock::now();
