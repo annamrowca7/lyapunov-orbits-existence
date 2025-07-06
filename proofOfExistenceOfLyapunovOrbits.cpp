@@ -38,34 +38,6 @@ void cr3bpVectorField(Node /*t*/, Node in[], int /*dimIn*/, Node out[], int /*di
     out[5] = in[2] * factor;
 }
 
-DVector newton(DVector x0, DMap &f) {
-    for (int i = 0; i < 10; ++i) {
-        DMatrix d = f.derivative(x0);
-        x0 = x0 - matrixAlgorithms::gauss(d, f(x0));
-    }
-    return x0;
-}
-
-bool intervalNewton(IVector x0, IMap &f, IVector &delta) {
-    IVector X = x0 + delta; //sparametryzaować 0.01
-    cout << "X:\n" << X << '\n';
-    IVector y = f(x0);
-    IMatrix d = f.derivative(X);//to już jest otoczka wypukła
-
-    IVector inverseVector = -matrixAlgorithms::gauss(d, y);
-    IVector N = x0 + inverseVector;
-    cout << "Inverse vector: \n" << inverseVector << '\n';
-    cout << "N:\n" << N << '\n';
-    if (subset(N, X)) {
-        delta = 1.5 * interval(-1, 1) * inverseVector;
-        std::cout << "Przybliżenie metodą Newtona: " << x0 << "znajduje się w przedziale:" << N << "\n";
-        return true;
-    } else {
-        std::cout << x0 << "nie jest zerem funkcji." << "\n";
-        return false;
-    }
-}
-
 auto findApproxOrbit(LDVector v, LDPoincareMap &pm, int p = 0, int q = 4) {
     LDMatrix D(6, 6);
     for (int i = 0; i < 15; ++i) {
@@ -210,7 +182,7 @@ void proofOfLyapunovOrbitsWithParams(
     bool firstStep = true;
     while ((forward && left < searchInterval.rightBound())
            || (!forward && left > searchInterval.leftBound()) || !success) {
-        if (subintervalLength < 1e-6) {
+        if (subintervalLength < 1e-7) {
             cout << "\nto small\n";
             break;
         }
@@ -295,8 +267,7 @@ int main() {
     //proof when Z is parametrized from as close to zero as possible to z = 0.625
     a = interval(1./(1<<20), 0.625);
     delta = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-5;
-    L1 = findApproxOrbit(LDVector{0.93236545001286, 0, 1./(1<<20), 0, -4.68507970920547681e-12, 0},pm,2).first; //guess point
-    cout<<L1;
+    L1 = LDVector{0.93236545001286, 0, 1./(1<<20), 0, -4.68507970920547681e-12, 0}; //guess point
     proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 2, 0, true);
     cout << "SWITCHING\n";
 

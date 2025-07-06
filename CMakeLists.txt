@@ -21,7 +21,7 @@ link_directories(
         "/home/amrowca/CAPD/capdMake/bin/lib"
 )
 find_package(CAPD REQUIRED PATHS /home/amrowca/CAPD/build)
-add_executable(implementacja main.cpp)
+add_executable(implementacja proofOfExistenceOfLyapunovOrbits.cpp)
 target_link_libraries(implementacja /home/amrowca/CAPD/build/libcapd.a /home/amrowca/CAPD/build/capdExt/filibsrc/libfilib.a)
 
 
