@@ -13,19 +13,15 @@ using capd::autodiff::Node;
 using namespace std;
 
 void cr3bpVectorField(Node /*t*/, Node in[], int /*dimIn*/, Node out[], int /*dimOut*/, Node params[], int /*noParams*/) {
-    // Try to factorize expression as much as possible.
-    // Usually we have to define some intermediate quantities.
-    Node mj = params[0] - 1; // relative mass of the Sun
+    Node mj = params[0] - 1; // relative mass of the Jupiter
     Node xMu = in[0] + params[0];
     Node xMj = in[0] + mj;
-    Node xMuSquare = xMu ^ 2; // square
+    Node xMuSquare = xMu ^ 2;
     Node xMjSquare = xMj ^ 2;
     Node ySquare = in[1] ^ 2;
     Node zSquare = in[2] ^ 2;
     Node yzSquare = ySquare + zSquare;
 
-    // power -1.5, for rigorous computation use ONLY REPRESENTABLE CONSTANTS.
-    // If exponent is not representable or it is an interval then it should be a parameter of the map.
     Node factor1 = mj * ((xMuSquare + yzSquare) ^ -1.5);
     Node factor2 = params[0] * ((xMjSquare + yzSquare) ^ -1.5);
     Node factor = factor1 - factor2;
@@ -75,7 +71,6 @@ auto intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, const LDMatrix
     //teraz potrzebujemy policzyć pochodną, na zbiorze Z, w0
     IMatrix DZw0(6, 6);
     IMatrix T = IMatrix::Identity(6);
-//    T[r][r] = 1;
     T[p][r] = -A[0];
     T[q][r] = -A[1];
     //w tym celu obliczamy C1... (liczy też pochodne odwzorowania) na punkcie x0
@@ -115,7 +110,6 @@ auto intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, const LDMatrix
 
 auto intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, int p = 0, int q = 4) {
     IVector X = x0 + delta;
-//    cout << "X:\n" << X << '\n';
     IMatrix D(6, 6);
     C0Rect2Set s0(x0); //0 oznacza, że liczymy tylko przecięcie z sekcją
     IVector y0 = pm(s0);
@@ -133,8 +127,6 @@ auto intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, int p = 0, int
     IVector N6d(6);
     N6d[p] = N[0];
     N6d[q] = N[1];
-//    cout << "Inverse vector: \n" << inverseVector << '\n';
-//    cout << "N:\n" << N << '\n';
     if (subset(N[0], X[p]) && subset(N[1], X[q])) {
         std::cout << "Ok :)\n";
         return make_pair(true, N6d);
@@ -245,14 +237,13 @@ int main() {
     LDMap vf(cr3bpVectorField, dim, dim, noParam);
     // set value of parameters mu, which is relative mass of Jupiter
     // 0 is index of parameter, 0.0009537 is its new value
-    long double mu = 0.0009537;
+    long double mu = 9.5388114032796904*1e-4;
     vf.setParameter(0, mu);
 
     // define solver, section and Poincare map
     LDOdeSolver solver(vf, 20);
     LDCoordinateSection section(6, 2); // nowa sekcja Poincarego: z = 0
     LDPoincareMap pm(solver, section);
-
 
     IMap ivf(cr3bpVectorField, dim, dim, noParam);
     ivf.setParameter(0, mu);
@@ -271,14 +262,24 @@ int main() {
     proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 2, 0, true);
     cout << "SWITCHING\n";
 
-//    //proof when X is parametrized, switched from parametrizing z at z = 0.625
+    //check if curve is parametrized by line at z = 0.625
+    LDVector L{0.7877694022564063481, 0, 0.625, 0, 0.1870358224560170757, 0};
+    IVector deltaForIntervalsConnectCheck = IVector{0, 0, 1, 0, 1, 0} * interval(-1, 1) * 1e-6;
+    auto [x, m] = findApproxOrbit(L, pm, 0);
+    auto xInt = vectalg::convertObject<IVector>(x);
+    auto [isZero, pair] = intervalNewton(xInt, ipm, delta, 2);
+    if (!isZero) {
+        cout << "EXCEPTION";
+    }
+
+    //proof when X is parametrized, switched from parametrizing z at z = 0.625
     a = interval(-0.78720775989249825, 0.78795250494679603);
     delta = IVector{0, 0, 1, 0, 1, 0} * interval(-1, 1) * 1e-5;
     L1 = LDVector{0.78795250494679603, 0, 0.625, 0, 0.18685004432949281, 0}; //guess point
     proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 0, 2, false);
     cout << "SWITCHING\n";
 
-    //proof when Z is parametrized, switched from parametrizing x at z = ...
+    //proof when Z is parametrized, switched from parametrizing x at z = 0.625
     a = interval(1. / (1 << 19), 0.625);
     delta = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-5;
     L1 = LDVector{-0.78616953504293408, 0, 0.625, 0, 1.7710684413357896, 0}; //guess point
