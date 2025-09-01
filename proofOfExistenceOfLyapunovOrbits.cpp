@@ -98,12 +98,9 @@ auto intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, const LDMatrix
     IVector N6d(6);
     N6d[p] = N[0];
     N6d[q] = N[1];
-    cout << N;
     if (subset(N[0], X[p]) && subset(N[1], X[q])) {
-        std::cout << "Ok :)\n";
         return make_pair(true, make_pair(N6d, T));
     } else {
-        std::cout << "nie :(\n";
         return make_pair(false, make_pair(N6d, T));
     }
 }
@@ -128,21 +125,17 @@ auto intervalNewton(IVector x0, IPoincareMap &pm, IVector &delta, int p = 0, int
     N6d[p] = N[0];
     N6d[q] = N[1];
     if (subset(N[0], X[p]) && subset(N[1], X[q])) {
-        std::cout << "Ok :)\n";
         return make_pair(true, N6d);
     } else {
-        std::cout << "nie :(\n" << "\n";
         return make_pair(false, N6d);
     }
 }
 
 bool intervalsConnect(int p, int q, const IVector &Nl, const LDVector &x, const IMatrix &T, IVector &delta) {
-    IVector Wi= matrixAlgorithms::gauss(T, Nl - vectalg::convertObject<IVector>(x));
+    IVector Wi = matrixAlgorithms::gauss(T, Nl - vectalg::convertObject<IVector>(x));
     if (subset(Wi[p], delta[p]) && subset(Wi[q], delta[q])) {
-        cout << "\nAwesome! \n";
         return true;
     } else {
-        cout << "\nTerrible! \n";
         return false;
     }
 }
@@ -165,7 +158,6 @@ void proofOfLyapunovOrbitsWithParams(
     double left = forward ? searchInterval.leftBound() : searchInterval.rightBound();
     double right = searchInterval.rightBound();
 
-    cout << "\ninterval: " << interval(left, right) << '\n';
     double L = searchInterval.leftBound();
     double R = searchInterval.rightBound();
 
@@ -175,8 +167,7 @@ void proofOfLyapunovOrbitsWithParams(
     while ((forward && left < searchInterval.rightBound())
            || (!forward && left > searchInterval.leftBound()) || !success) {
         if (subintervalLength < 1e-7) {
-            cout << "\nto small\n";
-            break;
+            throw std::runtime_error("Interval to small");
         }
         forward ? right = std::min(left + subintervalLength, R)
                 : left = std::max(right - subintervalLength, L);
@@ -195,14 +186,12 @@ void proofOfLyapunovOrbitsWithParams(
             IVector X = xInt + delta;
 
             if (!isZero) {
-                cout << "Failed for " << left << ". Reducing from " << subintervalLength;
                 subintervalLength *= 0.95;
-                cout << " to " << subintervalLength << "\n";
                 success = false;
             } else {
                 //check if one site connects
-                if(!firstStep && !intervalsConnect(p, q, Nl, x, T, delta)){
-                    break;
+                if (!firstStep && !intervalsConnect(p, q, Nl, x, T, delta)) {
+                    throw std::runtime_error("Curves do not connect");
                 }
                 LDVector v = x;
                 v[parametrizedParam] = forward ? right : left;
@@ -210,8 +199,8 @@ void proofOfLyapunovOrbitsWithParams(
                 IVector Nz = intervalNewton(vectalg::convertObject<IVector>(v), ipm, delta, p).second;
                 Nz[parametrizedParam] = forward ? right : left;
                 //check if other site connects
-                if(!firstStep && !intervalsConnect(p, q, Nz, x, T, delta)){
-                    break;
+                if (!firstStep && !intervalsConnect(p, q, Nz, x, T, delta)) {
+                    throw std::runtime_error("Curves do not connect");
                 }
                 Nl = Nz;
                 forward ? left = right : right = left;
@@ -221,13 +210,22 @@ void proofOfLyapunovOrbitsWithParams(
                 firstStep = false;
             }
         } catch (const std::exception &e) {
-            cout << "EXCEPTION for " << e.what() << ". Reducing from " << subintervalLength;
             subintervalLength *= 0.95;
-            cout << " to " << subintervalLength << "\n";
             success = false;
         }
     }
 
+}
+
+bool checkIfCurvesConnect(LDVector &L, LDPoincareMap &pm, IPoincareMap &ipm) {
+    IVector deltaForNewtonInPointProof = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-6;
+    auto x = findApproxOrbit(L, pm, 0).first;
+    auto xInt = vectalg::convertObject<IVector>(x);
+    auto [isZero, N6d] = intervalNewton(xInt, ipm, deltaForNewtonInPointProof, 0);
+    xInt[0] = N6d[0];
+    IVector deltaForIntervalsConnectCheck = IVector{0, 0, 1, 0, 1, 0} * interval(-1, 1) * 1e-6;
+    isZero = intervalNewton(xInt, ipm, deltaForIntervalsConnectCheck, 2).first;
+    return isZero;
 }
 
 int main() {
@@ -237,7 +235,7 @@ int main() {
     LDMap vf(cr3bpVectorField, dim, dim, noParam);
     // set value of parameters mu, which is relative mass of Jupiter
     // 0 is index of parameter, 0.0009537 is its new value
-    long double mu = 9.5388114032796904*1e-4;
+    long double mu = 9.5388114032796904 * 1e-4;
     vf.setParameter(0, mu);
 
     // define solver, section and Poincare map
@@ -256,20 +254,16 @@ int main() {
     LDVector L1;
 
     //proof when Z is parametrized from as close to zero as possible to z = 0.625
-    a = interval(1./(1<<20), 0.625);
+    a = interval(1. / (1 << 20), 0.625);
     delta = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-5;
-    L1 = LDVector{0.93236545001286, 0, 1./(1<<20), 0, -4.68507970920547681e-12, 0}; //guess point
+    L1 = LDVector{0.93236545001286, 0, 1. / (1 << 20), 0, -4.68507970920547681e-12, 0}; //guess point
     proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 2, 0, true);
     cout << "SWITCHING\n";
 
     //check if curve is parametrized by line at z = 0.625
-    LDVector L{0.7877694022564063481, 0, 0.625, 0, 0.1870358224560170757, 0};
-    IVector deltaForIntervalsConnectCheck = IVector{0, 0, 1, 0, 1, 0} * interval(-1, 1) * 1e-6;
-    auto [x, m] = findApproxOrbit(L, pm, 0);
-    auto xInt = vectalg::convertObject<IVector>(x);
-    auto [isZero, pair] = intervalNewton(xInt, ipm, delta, 2);
-    if (!isZero) {
-        cout << "EXCEPTION";
+    LDVector L{0.78795250494679603, 0, 0.625, 0, 0.18685004432949281, 0};
+    if (!checkIfCurvesConnect(L, pm, ipm)) {
+        throw std::runtime_error("Curves do not connect");
     }
 
     //proof when X is parametrized, switched from parametrizing z at z = 0.625
@@ -277,6 +271,12 @@ int main() {
     delta = IVector{0, 0, 1, 0, 1, 0} * interval(-1, 1) * 1e-5;
     L1 = LDVector{0.78795250494679603, 0, 0.625, 0, 0.18685004432949281, 0}; //guess point
     proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 0, 2, false);
+
+    //check if curve is parametrized by line at z = 0.625
+    L = LDVector{-0.78616953504293408, 0, 0.625, 0, 1.7710684413357896, 0};
+    if (!checkIfCurvesConnect(L, pm, ipm)) {
+        throw std::runtime_error("Curves do not connect");
+    }
     cout << "SWITCHING\n";
 
     //proof when Z is parametrized, switched from parametrizing x at z = 0.625
