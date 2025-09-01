@@ -280,7 +280,7 @@ int main() {
     cout << "SWITCHING\n";
 
     //proof when Z is parametrized, switched from parametrizing x at z = 0.625
-    a = interval(1. / (1 << 19), 0.625);
+    a = interval(1. / (1 << 22), 0.625);
     delta = IVector{1, 0, 0, 0, 1, 0} * interval(-1, 1) * 1e-5;
     L1 = LDVector{-0.78616953504293408, 0, 0.625, 0, 1.7710684413357896, 0}; //guess point
     proofOfLyapunovOrbitsWithParams(a, pm, ipm, delta, L1, 2, 0, false);
